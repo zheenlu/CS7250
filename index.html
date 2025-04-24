@@ -2,28 +2,71 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>European Youth Migration Sankey</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Migration Patterns Analysis</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
-    <link rel="stylesheet" href="style.css" />
     <style>
       body {
-        font-family: sans-serif;
-        background: #f9f9f9;
+        font-family: Arial, sans-serif;
+        margin: 0;
         padding: 20px;
       }
-      h1 {
-        font-size: 24px;
+      .button-container {
+        text-align: center;
+        margin: 20px 0;
       }
-      svg {
-        background: white;
+      .button-group {
+        display: inline-block;
         border: 1px solid #ccc;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      button {
+        padding: 8px 16px;
+        font-size: 14px;
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.3s;
+      }
+      button.active {
+        background-color: #4f46e5;
+        color: white;
+      }
+      button.inactive {
+        background-color: #ddd;
+        color: #333;
+      }
+      .chart-container {
+        width: 100%;
+        text-align: center;
       }
     </style>
   </head>
   <body>
-    <h1>Where Do Young Europeans Go? - Sankey Chart</h1>
-    <svg id="sankey" width="960" height="500"></svg>
+    <div class="button-container">
+      <h2>Young Europeans Migration Patterns Analysis</h2>
+      <div class="button-group">
+        <button id="q1-button" class="active" onclick="showView('question1')">
+          Question 1: Where Do Young Europeans Go?
+        </button>
+        <button id="q2-button" class="inactive" onclick="showView('question2')">
+          Question 2: How Does Gender Affect Migration Patterns?
+        </button>
+        <button id="q3-button" class="inactive" onclick="showView('question3')">
+          Question 3: How have migration trends evolved in the past 10 years?
+      </div>
+    </div>
+
+    <div id="view-question1" style="display: block" class="chart-container">
+      <svg id="sankey1" width="960" height="600"></svg>
+    </div>
+
+    <div id="view-question2" style="display: none" class="chart-container">
+      <svg id="sankey2" width="960" height="600"></svg>
+    </div>
+
+    <div id="view-question3" style="display: none" class="chart-container">
+      <svg id="sankey3" width="960" height="600"></svg>
 
     <script src="sankey.js"></script>
   </body>
