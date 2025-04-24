@@ -29,42 +29,197 @@ let europeanCountries = new Set([
   "Romania",
 ]);
 
+// Time slider variables
+let currentYear = 2023;
+const yearRange = [2014, 2023];
+let yearlyData = {}; // Will store data for each year
+
 // Function to switch between views
 function showView(viewId) {
   // Hide all views
   document.getElementById("view-question1").style.display = "none";
   document.getElementById("view-question2").style.display = "none";
+  document.getElementById("view-question3").style.display = "none";
 
   // Show the selected view
   document.getElementById("view-" + viewId).style.display = "block";
 
   // Update button styles
-  if (viewId === "question1") {
-    document.getElementById("q1-button").className = "active";
-    document.getElementById("q2-button").className = "inactive";
-  } else {
-    document.getElementById("q1-button").className = "inactive";
-    document.getElementById("q2-button").className = "active";
-  }
+  document.getElementById("q1-button").className = "inactive";
+  document.getElementById("q2-button").className = "inactive";
+  document.getElementById("q3-button").className = "inactive";
+
+  document.getElementById(
+    viewId.replace("question", "q") + "-button"
+  ).className = "active";
 }
 
 // Load data and initialize
 document.addEventListener("DOMContentLoaded", function () {
   d3.csv("data/estat.csv").then((data) => {
+    // Process data by year for Question 3
+    processDataByYear(data);
+
     // Prepare data for Question 1
     const q1Data = prepareQ1Data(data, europeanCountries);
 
     // Prepare data for Question 2
     const q2Data = prepareQ2Data(data, europeanCountries);
 
-    // Draw both charts
+    // Draw charts
     drawQuestion1Chart(q1Data);
     drawQuestion2Chart(q2Data);
+    initTimeSlider();
+    updateQuestion3Chart(currentYear);
 
     // Start with Question 1 visible
     showView("question1");
   });
 });
+
+// Process data by year for time slider
+function processDataByYear(data) {
+  // Initialize data structure for each year
+  for (let year = yearRange[0]; year <= yearRange[1]; year++) {
+    yearlyData[year] = {
+      migration: {},
+      genderMigration: {},
+    };
+  }
+
+  // Process the overall migration data by year
+  data.forEach((d) => {
+    const source = d.geo?.trim();
+    const target = d.partner?.trim();
+    const year = +d.TIME_PERIOD;
+    const value = +d.OBS_VALUE;
+
+    // Skip invalid data or years outside our range
+    if (!source || !target || isNaN(value) || value === 0) return;
+    if (source === target) return;
+    if (!europeanCountries.has(source)) return;
+    if (europeanCountries.has(target)) return;
+    if (year < yearRange[0] || year > yearRange[1]) return;
+    if (
+      target.includes("EU28") ||
+      target.includes("reporting") ||
+      target === "Unknown" ||
+      target === "Total"
+    )
+      return;
+
+    // Add to yearly migration data
+    const key = `${source}->${target}`;
+    if (!yearlyData[year].migration[key]) {
+      yearlyData[year].migration[key] = { source, target, value: 0 };
+    }
+    yearlyData[year].migration[key].value += value;
+
+    // If there's gender information, add to gender migration data
+    const gender = d.sex?.trim();
+    if (gender) {
+      const genderKey = `${source}|${gender}|${target}`;
+      if (!yearlyData[year].genderMigration[genderKey]) {
+        yearlyData[year].genderMigration[genderKey] = {
+          source,
+          gender,
+          target,
+          value: 0,
+        };
+      }
+      yearlyData[year].genderMigration[genderKey].value += value;
+    }
+  });
+}
+
+// Initialize time slider
+function initTimeSlider() {
+  // Create slider container
+  const sliderContainer = d3
+    .select("#view-question3")
+    .append("div")
+    .attr("class", "slider-container")
+    .style("text-align", "center")
+    .style("margin", "20px auto");
+
+  // Add year label
+  const yearLabel = sliderContainer
+    .append("div")
+    .attr("id", "year-label")
+    .style("font-size", "18px")
+    .style("font-weight", "bold")
+    .style("margin-bottom", "10px")
+    .text(`Year: ${currentYear}`);
+
+  // Add slider
+  sliderContainer
+    .append("input")
+    .attr("type", "range")
+    .attr("min", yearRange[0])
+    .attr("max", yearRange[1])
+    .attr("value", currentYear)
+    .attr("id", "year-slider")
+    .style("width", "80%")
+    .style("margin", "0 auto")
+    .on("input", function () {
+      const year = +this.value;
+      d3.select("#year-label").text(`Year: ${year}`);
+      currentYear = year;
+      updateQuestion3Chart(year);
+    });
+
+  // Add play button
+  sliderContainer
+    .append("button")
+    .attr("id", "play-button")
+    .style("margin-top", "10px")
+    .style("padding", "5px 15px")
+    .text("▶ Play")
+    .on("click", togglePlayback);
+}
+
+// Play/pause animation
+let isPlaying = false;
+let animationInterval;
+
+function togglePlayback() {
+  if (isPlaying) {
+    // Stop playback
+    clearInterval(animationInterval);
+    d3.select("#play-button").text("▶ Play");
+  } else {
+    // Start playback
+    d3.select("#play-button").text("⏸ Pause");
+
+    // Reset to beginning if at end
+    if (currentYear >= yearRange[1]) {
+      currentYear = yearRange[0];
+      updateSliderAndChart();
+    }
+
+    // Start animation
+    animationInterval = setInterval(() => {
+      if (currentYear < yearRange[1]) {
+        currentYear++;
+        updateSliderAndChart();
+      } else {
+        // Stop at the end
+        clearInterval(animationInterval);
+        d3.select("#play-button").text("▶ Play");
+        isPlaying = false;
+      }
+    }, 1000); // 1 second per year
+  }
+
+  isPlaying = !isPlaying;
+}
+
+// Update slider position and chart for current year
+function updateSliderAndChart() {
+  d3.select("#year-slider").property("value", currentYear);
+  d3.select("#year-label").text(`Year: ${currentYear}`);
+  updateQuestion3Chart(currentYear);
+}
 
 // Function to draw Question 1 chart
 function drawQuestion1Chart(migrationData) {
@@ -103,6 +258,43 @@ function drawQuestion2Chart(migrationData) {
     margin,
     innerWidth,
     innerHeight
+  );
+}
+
+// Function to update Question 3 chart based on year
+function updateQuestion3Chart(year) {
+  const svg = d3.select("#sankey3");
+  svg.selectAll("*").remove(); // Clear previous chart
+
+  const width = +svg.attr("width");
+  const height = +svg.attr("height");
+  const margin = { top: 30, right: 150, bottom: 10, left: 150 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+
+  // Get data for current year
+  const yearData = yearlyData[year];
+  if (!yearData || Object.keys(yearData.migration).length === 0) {
+    // No data for this year, show message
+    svg
+      .append("text")
+      .attr("x", width / 2)
+      .attr("y", height / 2)
+      .attr("text-anchor", "middle")
+      .text(`No migration data available for ${year}`);
+    return;
+  }
+
+  // Render chart with year data
+  renderQ1View(
+    yearData.migration,
+    svg,
+    width,
+    height,
+    margin,
+    innerWidth,
+    innerHeight,
+    `Migration Patterns (${year})`
   );
 }
 
@@ -179,7 +371,8 @@ function renderQ1View(
   height,
   margin,
   innerWidth,
-  innerHeight
+  innerHeight,
+  title
 ) {
   const allLinks = Object.values(migrationData);
 
@@ -312,8 +505,10 @@ function renderQ1View(
     .append("title")
     .text((d) => d.name);
 
+  // Create label groups
   const labelGroups = g.append("g").selectAll("g").data(nodes).join("g");
 
+  // Add background rectangles for labels
   labelGroups
     .append("rect")
     .attr("x", (d) => {
@@ -328,6 +523,7 @@ function renderQ1View(
     .attr("fill", "white")
     .attr("fill-opacity", 0.7);
 
+  // Add text labels
   labelGroups
     .append("text")
     .attr("x", (d) => (d.isSource ? d.x0 - 8 : d.x1 + 8))
@@ -346,7 +542,7 @@ function renderQ1View(
     .attr("text-anchor", "middle")
     .style("font-size", "16px")
     .style("font-weight", "bold")
-    .text("Where Do Young Europeans Go?");
+    .text(title || "Where Do Young Europeans Go?");
 }
 
 // Render Question 2 view: European countries -> Gender -> Destination countries
@@ -547,7 +743,7 @@ function renderQ2View(
             0.5 + (nodes[d.source].y0 / innerHeight) * 0.5
           );
         } else {
-          return "#f768a1";
+          return "#f768a1"; // Fixed pink color for females
         }
       } else {
         // Gender -> Target country links
@@ -586,8 +782,10 @@ function renderQ2View(
     .append("title")
     .text((d) => `${d.name}\n${d.value}`);
 
+  // Create label groups
   const labelGroups = g.append("g").selectAll("g").data(nodes).join("g");
 
+  // Add background rectangles for labels
   labelGroups
     .append("rect")
     .attr("x", (d) => {
@@ -610,6 +808,7 @@ function renderQ2View(
     .attr("fill", "white")
     .attr("fill-opacity", 0.7);
 
+  // Add text labels
   labelGroups
     .append("text")
     .attr("x", (d) => {
@@ -637,9 +836,46 @@ function renderQ2View(
     .style("font-size", "16px")
     .style("font-weight", "bold")
     .text("Gender-based Migration Patterns from Europe");
+
+  // Add legend
+  const legend = svg
+    .append("g")
+    .attr("transform", `translate(${width - 200}, ${height - 80})`);
+
+  // Males legend
+  legend
+    .append("rect")
+    .attr("x", 0)
+    .attr("y", 0)
+    .attr("width", 15)
+    .attr("height", 15)
+    .attr("fill", "#2171b5");
+
+  legend
+    .append("text")
+    .attr("x", 25)
+    .attr("y", 12)
+    .text("Males")
+    .style("font-size", "12px");
+
+  // Females legend
+  legend
+    .append("rect")
+    .attr("x", 0)
+    .attr("y", 25)
+    .attr("width", 15)
+    .attr("height", 15)
+    .attr("fill", "#f768a1");
+
+  legend
+    .append("text")
+    .attr("x", 25)
+    .attr("y", 37)
+    .text("Females")
+    .style("font-size", "12px");
 }
 
-// Helper function: Calculate link positions
+// Helper function: Calculate link positions with improved sorting
 function calculateLinkPositions(nodes, links) {
   // Create outgoing and incoming link collections for each node
   const nodeSourceLinks = Array(nodes.length)
@@ -654,17 +890,41 @@ function calculateLinkPositions(nodes, links) {
     nodeTargetLinks[link.target].push(link);
   });
 
+  // Identify gender nodes for special handling
+  const genderNodes = nodes.filter((node) => node.type === "gender");
+  const genderNodeIndices = new Set();
+  if (genderNodes.length > 0) {
+    const sourceCount = nodes.filter(
+      (n) => n.type === "source" || n.isSource === true
+    ).length;
+    for (let i = 0; i < genderNodes.length; i++) {
+      genderNodeIndices.add(sourceCount + i);
+    }
+  }
+
   // Calculate link positions for each node
   nodes.forEach((node, i) => {
     let y0 = node.y0;
     let y1 = node.y0;
 
     // Position outgoing links
-    nodeSourceLinks[i].sort((a, b) => {
-      const aTarget = nodes[a.target];
-      const bTarget = nodes[b.target];
-      return aTarget.y0 - bTarget.y0;
-    });
+    if (genderNodeIndices.has(i)) {
+      // Gender nodes need special sorting
+      nodeSourceLinks[i].sort((a, b) => {
+        const aTarget = nodes[a.target];
+        const bTarget = nodes[b.target];
+        return aTarget.y0 - bTarget.y0;
+      });
+    } else {
+      nodeSourceLinks[i].sort((a, b) => {
+        const aTarget = nodes[a.target];
+        const bTarget = nodes[b.target];
+        if (aTarget.type === bTarget.type) {
+          return aTarget.y0 - bTarget.y0;
+        }
+        return nodes.indexOf(aTarget) - nodes.indexOf(bTarget);
+      });
+    }
 
     nodeSourceLinks[i].forEach((link) => {
       link.sourceY0 = y0;
@@ -674,11 +934,23 @@ function calculateLinkPositions(nodes, links) {
     });
 
     // Position incoming links
-    nodeTargetLinks[i].sort((a, b) => {
-      const aSource = nodes[a.source];
-      const bSource = nodes[b.source];
-      return aSource.y0 - bSource.y0;
-    });
+    if (genderNodeIndices.has(i)) {
+      // Gender nodes need special sorting for incoming links
+      nodeTargetLinks[i].sort((a, b) => {
+        const aSource = nodes[a.source];
+        const bSource = nodes[b.source];
+        return aSource.y0 - bSource.y0;
+      });
+    } else {
+      nodeTargetLinks[i].sort((a, b) => {
+        const aSource = nodes[a.source];
+        const bSource = nodes[b.source];
+        if (aSource.type === bSource.type) {
+          return aSource.y0 - bSource.y0;
+        }
+        return nodes.indexOf(aSource) - nodes.indexOf(bSource);
+      });
+    }
 
     nodeTargetLinks[i].forEach((link) => {
       link.targetY0 = y1;
