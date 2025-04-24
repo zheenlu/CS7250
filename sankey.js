@@ -264,9 +264,10 @@ function drawQuestion1Chart(migrationData) {
 // Function to draw Question 2 chart
 function drawQuestion2Chart(migrationData) {
   const svg = d3.select("#sankey2");
-  const width = +svg.attr("width");
+  const width = 1400;
+  svg.attr("width", width);
   const height = +svg.attr("height");
-  const margin = { top: 30, right: 150, bottom: 10, left: 150 };
+  const margin = { top: 30, right: 350, bottom: 10, left: 150 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
 
@@ -321,9 +322,10 @@ function updateQuestion3Chart(year) {
 // Function to draw Age Group chart
 function drawAgeGroupChart(migrationData) {
   const svg = d3.select("#sankey4");
-  const width = +svg.attr("width");
+  const width = 1400;
+  svg.attr("width", width);
   const height = +svg.attr("height");
-  const margin = { top: 30, right: 150, bottom: 10, left: 150 };
+  const margin = { top: 30, right: 350, bottom: 10, left: 150 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
 
@@ -677,8 +679,34 @@ function renderQ2View(
     .sort((a, b) => b[1] - a[1])
     .map((d) => d[0]);
 
-  const sortedTargets = Object.entries(targetTotal)
-    .sort((a, b) => b[1] - a[1])
+  // 计算每个目标国家的男女比例差异
+  const targetGenderRatio = {};
+  Object.entries(genderTargetTotal).forEach(([key, value]) => {
+    const [gender, target] = key.split("|");
+    if (!targetGenderRatio[target]) {
+      targetGenderRatio[target] = { male: 0, female: 0 };
+    }
+    if (gender === "Males") {
+      targetGenderRatio[target].male += value;
+    } else if (gender === "Females") {
+      targetGenderRatio[target].female += value;
+    }
+  });
+
+  // 计算差异系数 (正值表示男性更多，负值表示女性更多)
+  const targetDifference = {};
+  Object.entries(targetGenderRatio).forEach(([target, counts]) => {
+    const total = counts.male + counts.female;
+    if (total > 0) {
+      // 使用比例差异作为排序依据
+      targetDifference[target] = (counts.male - counts.female) / total;
+    }
+  });
+
+  // 按照性别差异排序目标国家（从最偏女性到最偏男性）
+  const sortedTargets = Object.entries(targetDifference)
+    .filter(([target]) => targetTotal[target] > 100) // 过滤掉总量太小的国家
+    .sort((a, b) => a[1] - b[1]) // 从偏女性到偏男性排序
     .slice(0, 15)
     .map((d) => d[0]);
 
@@ -739,6 +767,14 @@ function renderQ2View(
   // Add target country nodes (right)
   yOffset = margin.top;
   sortedTargets.forEach((name) => {
+    const genderRatio = targetGenderRatio[name];
+    const femalePercentage = genderRatio
+      ? Math.round(
+          (genderRatio.female / (genderRatio.female + genderRatio.male)) * 100
+        )
+      : 0;
+    const totalCount = genderRatio ? genderRatio.female + genderRatio.male : 0;
+
     nodes.push({
       name,
       type: "target",
@@ -747,6 +783,8 @@ function renderQ2View(
       y0: yOffset,
       y1: yOffset + targetHeight,
       value: targetTotal[name],
+      femalePercentage: femalePercentage,
+      totalCount: totalCount,
     });
     yOffset += targetHeight + targetPadding;
   });
@@ -860,7 +898,18 @@ function renderQ2View(
       }
     })
     .append("title")
-    .text((d) => `${d.name}\n${d.value}`);
+    .text((d) => {
+      if (d.type === "target") {
+        return `${d.name}\nTotal migrants: ${d.totalCount}\nFemale: ${
+          d.femalePercentage
+        }% (${Math.round(
+          (d.totalCount * d.femalePercentage) / 100
+        )} migrants)\nMale: ${100 - d.femalePercentage}% (${Math.round(
+          (d.totalCount * (100 - d.femalePercentage)) / 100
+        )} migrants)`;
+      }
+      return `${d.name}\n${d.value}`;
+    });
 
   // Create label groups
   const labelGroups = g.append("g").selectAll("g").data(nodes).join("g");
@@ -883,10 +932,12 @@ function renderQ2View(
       }
     })
     .attr("y", (d) => (d.y0 + d.y1) / 2 - 10)
-    .attr("width", (d) => d.name.length * 6 + 4)
-    .attr("height", 20)
-    .attr("fill", "white")
-    .attr("fill-opacity", 0.7);
+    .attr("width", (d) => {
+      if (d.type === "target") {
+        return Math.max((d.name.length + 20) * 6, 200) + 4;
+      }
+      return d.name.length * 6 + 4;
+    });
 
   // Add text labels
   labelGroups
@@ -903,7 +954,19 @@ function renderQ2View(
       if (d.type === "gender") return "middle";
       return "start";
     })
-    .text((d) => d.name)
+    .text((d) => {
+      if (d.type === "target") {
+        const formattedCount =
+          d.totalCount < 1000
+            ? d.totalCount
+            : d.totalCount >= 10000
+            ? Math.round(d.totalCount / 1000) + "k"
+            : (d.totalCount / 1000).toFixed(1) + "k";
+
+        return `${d.name} ${d.femalePercentage}%F (n=${formattedCount})`;
+      }
+      return d.name;
+    })
     .style("fill", "#333")
     .style("font-weight", (d) => (d.type === "gender" ? "bold" : "normal"));
 
@@ -915,7 +978,7 @@ function renderQ2View(
     .attr("text-anchor", "middle")
     .style("font-size", "16px")
     .style("font-weight", "bold")
-    .text("Gender-based Migration Patterns from Europe");
+    .text("Do Males and Females Migrate to Different Countries?");
 }
 
 // Render Age Group view: European countries -> Age Groups -> Destination countries
@@ -971,10 +1034,32 @@ function renderAgeGroupView(
     .map((key) => ageGroups[key])
     .filter((group) => ageGroupTotal[group] > 0); // Only include age groups with data
 
-  const sortedTargets = Object.entries(targetTotal)
-    .sort((a, b) => b[1] - a[1])
+  const targetAgePreference = {};
+
+  Object.entries(targetTotal).forEach(([target, total]) => {
+    targetAgePreference[target] = {};
+
+    sortedAgeGroups.forEach((age) => {
+      targetAgePreference[target][age] = 0;
+    });
+
+    Object.entries(ageTargetTotal).forEach(([key, value]) => {
+      const [age, t] = key.split("|");
+      if (t === target && sortedAgeGroups.includes(age)) {
+        targetAgePreference[target][age] = value / total;
+      }
+    });
+  });
+
+  const targetsByAgePreference = Object.entries(targetAgePreference)
+    .filter(([target]) => targetTotal[target] > 100)
+    .sort((a, b) => {
+      return b[1]["20-24"] - a[1]["20-24"];
+    })
     .slice(0, 15)
     .map((d) => d[0]);
+
+  const sortedTargets = targetsByAgePreference;
 
   // Calculate node dimensions
   const nodeWidth = 15;
@@ -1033,6 +1118,11 @@ function renderAgeGroupView(
   // Add target country nodes (right)
   yOffset = margin.top;
   sortedTargets.forEach((name) => {
+    // 计算年龄组偏好比例
+    const agePrefs = targetAgePreference[name];
+    const youngPercentage = agePrefs ? Math.round(agePrefs["20-24"] * 100) : 0;
+    const totalCount = targetTotal[name] || 0; // 总移民数量
+
     nodes.push({
       name,
       type: "target",
@@ -1040,7 +1130,9 @@ function renderAgeGroupView(
       x1: targetX + nodeWidth,
       y0: yOffset,
       y1: yOffset + targetHeight,
-      value: targetTotal[name],
+      value: totalCount,
+      youngPercentage: youngPercentage,
+      totalCount: totalCount,
     });
     yOffset += targetHeight + targetPadding;
   });
@@ -1148,7 +1240,14 @@ function renderAgeGroupView(
       }
     })
     .append("title")
-    .text((d) => `${d.name}\n${d.value}`);
+    .text((d) => {
+      if (d.type === "target") {
+        return `${d.name}\nTotal: ${d.totalCount}\n20-24 Age: ${
+          d.youngPercentage
+        }% (${Math.round((d.totalCount * d.youngPercentage) / 100)} migrants)`;
+      }
+      return `${d.name}\n${d.value}`;
+    });
 
   // Create label groups
   const labelGroups = g.append("g").selectAll("g").data(nodes).join("g");
@@ -1157,11 +1256,11 @@ function renderAgeGroupView(
   labelGroups
     .append("rect")
     .attr("x", (d) => {
-      if (d.type === "source") {
+      if (d.type === "source" || d.isSource === true) {
         const x = d.x0 - 8;
         const textWidth = d.name.length * 6;
         return x - textWidth - 4;
-      } else if (d.type === "ageGroup") {
+      } else if (d.type === "gender") {
         const x = d.x0 + nodeWidth / 2;
         const textWidth = d.name.length * 6;
         return x - textWidth / 2 - 2;
@@ -1171,7 +1270,12 @@ function renderAgeGroupView(
       }
     })
     .attr("y", (d) => (d.y0 + d.y1) / 2 - 10)
-    .attr("width", (d) => d.name.length * 6 + 4)
+    .attr("width", (d) => {
+      if (d.type === "target" || d.isSource === false) {
+        return Math.max((d.name.length + 20) * 6, 200) + 4;
+      }
+      return d.name.length * 6 + 4;
+    })
     .attr("height", 20)
     .attr("fill", "white")
     .attr("fill-opacity", 0.7);
@@ -1191,7 +1295,18 @@ function renderAgeGroupView(
       if (d.type === "ageGroup") return "middle";
       return "start";
     })
-    .text((d) => d.name)
+    .text((d) => {
+      if (d.type === "target") {
+        const formattedCount =
+          d.totalCount < 1000
+            ? d.totalCount
+            : d.totalCount >= 10000
+            ? Math.round(d.totalCount / 1000) + "k"
+            : (d.totalCount / 1000).toFixed(1) + "k";
+        return `${d.name} ${d.youngPercentage}%Y (n=${formattedCount})`;
+      }
+      return d.name;
+    })
     .style("fill", "#333")
     .style("font-weight", (d) => (d.type === "ageGroup" ? "bold" : "normal"));
 
@@ -1204,6 +1319,55 @@ function renderAgeGroupView(
     .style("font-size", "16px")
     .style("font-weight", "bold")
     .text("Age-based Migration Patterns from Europe");
+
+  // Add legend with improved position
+  const legendItems = sortedAgeGroups;
+  const legendItemHeight = 20;
+  const legendHeight = legendItems.length * legendItemHeight;
+
+  const legend = svg
+    .append("g")
+    .attr("transform", `translate(${width - 120}, ${margin.top + 10})`)
+    .attr("background", "white");
+
+  legend
+    .append("rect")
+    .attr("x", -10)
+    .attr("y", -15)
+    .attr("width", 100)
+    .attr("height", legendItems.length * legendItemHeight + 30)
+    .attr("fill", "white")
+    .attr("fill-opacity", 0.8)
+    .attr("stroke", "#ddd")
+    .attr("rx", 5);
+
+  // Add legend title
+  legend
+    .append("text")
+    .attr("x", 0)
+    .attr("y", -5)
+    .style("font-weight", "bold")
+    .text("Age Groups");
+
+  // Add legend items
+  legendItems.forEach((age, i) => {
+    // Color square
+    legend
+      .append("rect")
+      .attr("x", 0)
+      .attr("y", i * legendItemHeight)
+      .attr("width", 15)
+      .attr("height", 15)
+      .attr("fill", ageGroupColors[age] || "#999");
+
+    // Text label
+    legend
+      .append("text")
+      .attr("x", 25)
+      .attr("y", i * legendItemHeight + 12)
+      .text(age)
+      .style("font-size", "12px");
+  });
 }
 
 // Helper function: Calculate link positions with improved sorting for all node types
@@ -1315,10 +1479,10 @@ function generateLinkPath(d) {
   const x3 = targetX - (targetX - sourceX) * curvature;
 
   return `
-      M ${sourceX},${sourceY0}
-      C ${x2},${sourceY0} ${x3},${targetY0} ${targetX},${targetY0}
-      L ${targetX},${targetY1}
-      C ${x3},${targetY1} ${x2},${sourceY1} ${sourceX},${sourceY1}
-      Z
-    `;
+        M ${sourceX},${sourceY0}
+        C ${x2},${sourceY0} ${x3},${targetY0} ${targetX},${targetY0}
+        L ${targetX},${targetY1}
+        C ${x3},${targetY1} ${x2},${sourceY1} ${sourceX},${sourceY1}
+        Z
+      `;
 }
