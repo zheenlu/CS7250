@@ -679,7 +679,6 @@ function renderQ2View(
     .sort((a, b) => b[1] - a[1])
     .map((d) => d[0]);
 
-  // 计算每个目标国家的男女比例差异
   const targetGenderRatio = {};
   Object.entries(genderTargetTotal).forEach(([key, value]) => {
     const [gender, target] = key.split("|");
@@ -693,20 +692,17 @@ function renderQ2View(
     }
   });
 
-  // 计算差异系数 (正值表示男性更多，负值表示女性更多)
   const targetDifference = {};
   Object.entries(targetGenderRatio).forEach(([target, counts]) => {
     const total = counts.male + counts.female;
     if (total > 0) {
-      // 使用比例差异作为排序依据
       targetDifference[target] = (counts.male - counts.female) / total;
     }
   });
 
-  // 按照性别差异排序目标国家（从最偏女性到最偏男性）
   const sortedTargets = Object.entries(targetDifference)
-    .filter(([target]) => targetTotal[target] > 100) // 过滤掉总量太小的国家
-    .sort((a, b) => a[1] - b[1]) // 从偏女性到偏男性排序
+    .filter(([target]) => targetTotal[target] > 100)
+    .sort((a, b) => a[1] - b[1])
     .slice(0, 15)
     .map((d) => d[0]);
 
@@ -1118,10 +1114,9 @@ function renderAgeGroupView(
   // Add target country nodes (right)
   yOffset = margin.top;
   sortedTargets.forEach((name) => {
-    // 计算年龄组偏好比例
     const agePrefs = targetAgePreference[name];
     const youngPercentage = agePrefs ? Math.round(agePrefs["20-24"] * 100) : 0;
-    const totalCount = targetTotal[name] || 0; // 总移民数量
+    const totalCount = targetTotal[name] || 0;
 
     nodes.push({
       name,
