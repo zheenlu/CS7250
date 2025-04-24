@@ -71,6 +71,9 @@
         <button id="q3-button" class="inactive" onclick="showView('question3')">
           Question 3: How Have Migration Trends Evolved (2014-2023)?
         </button>
+        <button id="q4-button" class="inactive" onclick="showView('question4')">
+          Question 4: How Do Age Groups Affect Migration Patterns?
+        </button>
       </div>
     </div>
 
@@ -85,6 +88,10 @@
     <div id="view-question3" style="display: none" class="chart-container">
       <svg id="sankey3" width="960" height="600"></svg>
       <!-- Slider will be added here dynamically -->
+    </div>
+
+    <div id="view-question4" style="display: none" class="chart-container">
+      <svg id="sankey4" width="960" height="600"></svg>
     </div>
 
     <script src="sankey.js"></script>

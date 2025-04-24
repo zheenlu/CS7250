@@ -29,6 +29,20 @@ let europeanCountries = new Set([
   "Romania",
 ]);
 
+// Define age groups for better categorization
+const ageGroups = {
+  "From 20 to 24 years": "20-24",
+  "From 25 to 29 years": "25-29",
+  "From 30 to 34 years": "30-35",
+};
+
+// Age group colors (blue to red gradient)
+const ageGroupColors = {
+  "20-24": "#1e88e5",
+  "25-29": "#8e24aa",
+  "30-35": "#f57c00",
+};
+
 // Time slider variables
 let currentYear = 2023;
 const yearRange = [2014, 2023];
@@ -40,6 +54,7 @@ function showView(viewId) {
   document.getElementById("view-question1").style.display = "none";
   document.getElementById("view-question2").style.display = "none";
   document.getElementById("view-question3").style.display = "none";
+  document.getElementById("view-question4").style.display = "none";
 
   // Show the selected view
   document.getElementById("view-" + viewId).style.display = "block";
@@ -48,6 +63,7 @@ function showView(viewId) {
   document.getElementById("q1-button").className = "inactive";
   document.getElementById("q2-button").className = "inactive";
   document.getElementById("q3-button").className = "inactive";
+  document.getElementById("q4-button").className = "inactive";
 
   document.getElementById(
     viewId.replace("question", "q") + "-button"
@@ -66,11 +82,15 @@ document.addEventListener("DOMContentLoaded", function () {
     // Prepare data for Question 2
     const q2Data = prepareQ2Data(data, europeanCountries);
 
+    // Prepare data for Question 4 (Age groups)
+    const q4Data = prepareAgeGroupData(data, europeanCountries);
+
     // Draw charts
     drawQuestion1Chart(q1Data);
     drawQuestion2Chart(q2Data);
     initTimeSlider();
     updateQuestion3Chart(currentYear);
+    drawAgeGroupChart(q4Data);
 
     // Start with Question 1 visible
     showView("question1");
@@ -298,6 +318,26 @@ function updateQuestion3Chart(year) {
   );
 }
 
+// Function to draw Age Group chart
+function drawAgeGroupChart(migrationData) {
+  const svg = d3.select("#sankey4");
+  const width = +svg.attr("width");
+  const height = +svg.attr("height");
+  const margin = { top: 30, right: 150, bottom: 10, left: 150 };
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+
+  renderAgeGroupView(
+    migrationData,
+    svg,
+    width,
+    height,
+    margin,
+    innerWidth,
+    innerHeight
+  );
+}
+
 // Prepare data for Question 1
 function prepareQ1Data(data, europeanCountries) {
   const migration = {};
@@ -356,6 +396,43 @@ function prepareQ2Data(data, europeanCountries) {
     const key = `${source}|${gender}|${target}`;
     if (!migration[key]) {
       migration[key] = { source, gender, target, value: 0 };
+    }
+    migration[key].value += value;
+  });
+
+  return migration;
+}
+
+// Prepare data for Age Group analysis
+function prepareAgeGroupData(data, europeanCountries) {
+  const migration = {};
+
+  data.forEach((d) => {
+    const source = d.geo?.trim();
+    const target = d.partner?.trim();
+    const ageRaw = d.age?.trim();
+    const value = +d.OBS_VALUE;
+
+    // Filter invalid data
+    if (!source || !target || !ageRaw || isNaN(value) || value === 0) return;
+    if (source === target) return;
+    if (!europeanCountries.has(source)) return;
+    if (europeanCountries.has(target)) return;
+    if (
+      target.includes("EU28") ||
+      target.includes("reporting") ||
+      target === "Unknown" ||
+      target === "Total"
+    )
+      return;
+
+    // Map to standardized age group
+    const ageGroup = ageGroups[ageRaw] || ageRaw;
+
+    // Create unique key
+    const key = `${source}|${ageGroup}|${target}`;
+    if (!migration[key]) {
+      migration[key] = { source, ageGroup, target, value: 0 };
     }
     migration[key].value += value;
   });
@@ -875,7 +952,295 @@ function renderQ2View(
     .style("font-size", "12px");
 }
 
-// Helper function: Calculate link positions with improved sorting
+// Render Age Group view: European countries -> Age Groups -> Destination countries
+function renderAgeGroupView(
+  migrationData,
+  svg,
+  width,
+  height,
+  margin,
+  innerWidth,
+  innerHeight
+) {
+  const allLinks = Object.values(migrationData);
+
+  // Calculate totals for each dimension
+  const sourceTotal = {};
+  const ageGroupTotal = {};
+  const targetTotal = {};
+  const sourceAgeTotal = {};
+  const ageTargetTotal = {};
+
+  allLinks.forEach((d) => {
+    // Source country total
+    if (!sourceTotal[d.source]) sourceTotal[d.source] = 0;
+    sourceTotal[d.source] += d.value;
+
+    // Age group total
+    if (!ageGroupTotal[d.ageGroup]) ageGroupTotal[d.ageGroup] = 0;
+    ageGroupTotal[d.ageGroup] += d.value;
+
+    // Target country total
+    if (!targetTotal[d.target]) targetTotal[d.target] = 0;
+    targetTotal[d.target] += d.value;
+
+    // Source country to age group total
+    const saKey = `${d.source}|${d.ageGroup}`;
+    if (!sourceAgeTotal[saKey]) sourceAgeTotal[saKey] = 0;
+    sourceAgeTotal[saKey] += d.value;
+
+    // Age group to target country total
+    const atKey = `${d.ageGroup}|${d.target}`;
+    if (!ageTargetTotal[atKey]) ageTargetTotal[atKey] = 0;
+    ageTargetTotal[atKey] += d.value;
+  });
+
+  // Sort each dimension
+  const sortedSources = Object.entries(sourceTotal)
+    .sort((a, b) => b[1] - a[1])
+    .map((d) => d[0]);
+
+  // Sort age groups in chronological order
+  const sortedAgeGroups = Object.keys(ageGroups)
+    .map((key) => ageGroups[key])
+    .filter((group) => ageGroupTotal[group] > 0); // Only include age groups with data
+
+  const sortedTargets = Object.entries(targetTotal)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .map((d) => d[0]);
+
+  // Calculate node dimensions
+  const nodeWidth = 15;
+  const sourcePadding = Math.min(8, innerHeight / sortedSources.length);
+  const ageGroupPadding = Math.min(8, innerHeight / sortedAgeGroups.length);
+  const targetPadding = Math.min(8, innerHeight / sortedTargets.length);
+
+  const sourceHeight =
+    (innerHeight - (sortedSources.length - 1) * sourcePadding) /
+    sortedSources.length;
+  const ageGroupHeight =
+    (innerHeight - (sortedAgeGroups.length - 1) * ageGroupPadding) /
+    sortedAgeGroups.length;
+  const targetHeight =
+    (innerHeight - (sortedTargets.length - 1) * targetPadding) /
+    sortedTargets.length;
+
+  // Calculate horizontal positions
+  const sourceX = margin.left;
+  const ageGroupX = margin.left + innerWidth / 2 - nodeWidth / 2;
+  const targetX = width - margin.right - nodeWidth;
+
+  // Create nodes
+  const nodes = [];
+
+  // Add source country nodes (left)
+  let yOffset = margin.top;
+  sortedSources.forEach((name) => {
+    nodes.push({
+      name,
+      type: "source",
+      x0: sourceX,
+      x1: sourceX + nodeWidth,
+      y0: yOffset,
+      y1: yOffset + sourceHeight,
+      value: sourceTotal[name],
+    });
+    yOffset += sourceHeight + sourcePadding;
+  });
+
+  // Add age group nodes (middle)
+  yOffset = margin.top;
+  sortedAgeGroups.forEach((name) => {
+    nodes.push({
+      name,
+      type: "ageGroup",
+      x0: ageGroupX,
+      x1: ageGroupX + nodeWidth,
+      y0: yOffset,
+      y1: yOffset + ageGroupHeight,
+      value: ageGroupTotal[name],
+    });
+    yOffset += ageGroupHeight + ageGroupPadding;
+  });
+
+  // Add target country nodes (right)
+  yOffset = margin.top;
+  sortedTargets.forEach((name) => {
+    nodes.push({
+      name,
+      type: "target",
+      x0: targetX,
+      x1: targetX + nodeWidth,
+      y0: yOffset,
+      y1: yOffset + targetHeight,
+      value: targetTotal[name],
+    });
+    yOffset += targetHeight + targetPadding;
+  });
+
+  // Create node name to index mapping
+  const nodeMap = {};
+  nodes.forEach((node, i) => {
+    nodeMap[node.name + ":" + node.type] = i;
+  });
+
+  // Create links
+  const links = [];
+
+  // First level: Source country -> Age Group
+  Object.entries(sourceAgeTotal).forEach(([key, value]) => {
+    const [source, ageGroup] = key.split("|");
+    if (sortedSources.includes(source) && sortedAgeGroups.includes(ageGroup)) {
+      const sourceIndex = nodeMap[source + ":source"];
+      const ageGroupIndex = nodeMap[ageGroup + ":ageGroup"];
+
+      if (sourceIndex !== undefined && ageGroupIndex !== undefined) {
+        links.push({
+          source: sourceIndex,
+          target: ageGroupIndex,
+          value,
+          sourceNode: nodes[sourceIndex],
+          targetNode: nodes[ageGroupIndex],
+          level: 1,
+        });
+      }
+    }
+  });
+
+  // Second level: Age Group -> Target country
+  Object.entries(ageTargetTotal).forEach(([key, value]) => {
+    const [ageGroup, target] = key.split("|");
+    if (sortedAgeGroups.includes(ageGroup) && sortedTargets.includes(target)) {
+      const ageGroupIndex = nodeMap[ageGroup + ":ageGroup"];
+      const targetIndex = nodeMap[target + ":target"];
+
+      if (ageGroupIndex !== undefined && targetIndex !== undefined) {
+        links.push({
+          source: ageGroupIndex,
+          target: targetIndex,
+          value,
+          sourceNode: nodes[ageGroupIndex],
+          targetNode: nodes[targetIndex],
+          level: 2,
+        });
+      }
+    }
+  });
+
+  // Calculate link positions
+  calculateLinkPositions(nodes, links);
+
+  // Create container
+  const g = svg.append("g");
+
+  // Draw links
+  g.append("g")
+    .attr("fill", "none")
+    .attr("stroke-opacity", 0.5)
+    .selectAll("path")
+    .data(links)
+    .join("path")
+    .attr("d", (d) => generateLinkPath(d))
+    .attr("stroke", (d) => {
+      if (d.level === 1) {
+        // Source country -> Age Group links
+        const ageGroupNode = nodes[d.target];
+        return ageGroupColors[ageGroupNode.name] || "#999";
+      } else {
+        // Age Group -> Target country links
+        const ageGroup = nodes[d.source].name;
+        return ageGroupColors[ageGroup] || "#999";
+      }
+    })
+    .attr("stroke-width", (d) => Math.max(1, d.width))
+    .append("title")
+    .text((d) => {
+      if (d.level === 1) {
+        return `${nodes[d.source].name} → ${nodes[d.target].name}\n${d.value}`;
+      } else {
+        return `${nodes[d.source].name} → ${nodes[d.target].name}\n${d.value}`;
+      }
+    });
+
+  // Draw nodes
+  g.append("g")
+    .selectAll("rect")
+    .data(nodes)
+    .join("rect")
+    .attr("x", (d) => d.x0)
+    .attr("y", (d) => d.y0)
+    .attr("height", (d) => Math.max(1, d.y1 - d.y0))
+    .attr("width", (d) => d.x1 - d.x0)
+    .attr("fill", (d) => {
+      if (d.type === "source") {
+        return "#4a89dc";
+      } else if (d.type === "ageGroup") {
+        return ageGroupColors[d.name] || "#999";
+      } else {
+        return "#e74c3c";
+      }
+    })
+    .append("title")
+    .text((d) => `${d.name}\n${d.value}`);
+
+  // Create label groups
+  const labelGroups = g.append("g").selectAll("g").data(nodes).join("g");
+
+  // Add background rectangles for labels
+  labelGroups
+    .append("rect")
+    .attr("x", (d) => {
+      if (d.type === "source") {
+        const x = d.x0 - 8;
+        const textWidth = d.name.length * 6;
+        return x - textWidth - 4;
+      } else if (d.type === "ageGroup") {
+        const x = d.x0 + nodeWidth / 2;
+        const textWidth = d.name.length * 6;
+        return x - textWidth / 2 - 2;
+      } else {
+        const x = d.x1 + 8;
+        return x - 2;
+      }
+    })
+    .attr("y", (d) => (d.y0 + d.y1) / 2 - 10)
+    .attr("width", (d) => d.name.length * 6 + 4)
+    .attr("height", 20)
+    .attr("fill", "white")
+    .attr("fill-opacity", 0.7);
+
+  // Add text labels
+  labelGroups
+    .append("text")
+    .attr("x", (d) => {
+      if (d.type === "source") return d.x0 - 8;
+      if (d.type === "ageGroup") return d.x0 + nodeWidth / 2;
+      return d.x1 + 8;
+    })
+    .attr("y", (d) => (d.y0 + d.y1) / 2)
+    .attr("dy", "0.35em")
+    .attr("text-anchor", (d) => {
+      if (d.type === "source") return "end";
+      if (d.type === "ageGroup") return "middle";
+      return "start";
+    })
+    .text((d) => d.name)
+    .style("fill", "#333")
+    .style("font-weight", (d) => (d.type === "ageGroup" ? "bold" : "normal"));
+
+  // Add title
+  svg
+    .append("text")
+    .attr("x", width / 2)
+    .attr("y", 20)
+    .attr("text-anchor", "middle")
+    .style("font-size", "16px")
+    .style("font-weight", "bold")
+    .text("Age-based Migration Patterns from Europe");
+}
+
+// Helper function: Calculate link positions with improved sorting for all node types
 function calculateLinkPositions(nodes, links) {
   // Create outgoing and incoming link collections for each node
   const nodeSourceLinks = Array(nodes.length)
@@ -890,15 +1255,17 @@ function calculateLinkPositions(nodes, links) {
     nodeTargetLinks[link.target].push(link);
   });
 
-  // Identify gender nodes for special handling
-  const genderNodes = nodes.filter((node) => node.type === "gender");
-  const genderNodeIndices = new Set();
-  if (genderNodes.length > 0) {
+  // Identify middle nodes (gender or age groups) for special handling
+  const middleNodes = nodes.filter(
+    (node) => node.type === "gender" || node.type === "ageGroup"
+  );
+  const middleNodeIndices = new Set();
+  if (middleNodes.length > 0) {
     const sourceCount = nodes.filter(
       (n) => n.type === "source" || n.isSource === true
     ).length;
-    for (let i = 0; i < genderNodes.length; i++) {
-      genderNodeIndices.add(sourceCount + i);
+    for (let i = 0; i < middleNodes.length; i++) {
+      middleNodeIndices.add(sourceCount + i);
     }
   }
 
@@ -908,8 +1275,8 @@ function calculateLinkPositions(nodes, links) {
     let y1 = node.y0;
 
     // Position outgoing links
-    if (genderNodeIndices.has(i)) {
-      // Gender nodes need special sorting
+    if (middleNodeIndices.has(i)) {
+      // Middle nodes need special sorting
       nodeSourceLinks[i].sort((a, b) => {
         const aTarget = nodes[a.target];
         const bTarget = nodes[b.target];
@@ -934,8 +1301,8 @@ function calculateLinkPositions(nodes, links) {
     });
 
     // Position incoming links
-    if (genderNodeIndices.has(i)) {
-      // Gender nodes need special sorting for incoming links
+    if (middleNodeIndices.has(i)) {
+      // Middle nodes need special sorting for incoming links
       nodeTargetLinks[i].sort((a, b) => {
         const aSource = nodes[a.source];
         const bSource = nodes[b.source];
