@@ -619,7 +619,10 @@ function renderQ1View(
     .attr("text-anchor", "middle")
     .style("font-size", "16px")
     .style("font-weight", "bold")
-    .text(title || "Where Do Young Europeans Go?");
+    .text(
+      title ||
+        "What are the top origin and destination countries for young Europeans?"
+    );
 }
 
 // Render Question 2 view: European countries -> Gender -> Destination countries
@@ -913,43 +916,6 @@ function renderQ2View(
     .style("font-size", "16px")
     .style("font-weight", "bold")
     .text("Gender-based Migration Patterns from Europe");
-
-  // Add legend
-  const legend = svg
-    .append("g")
-    .attr("transform", `translate(${width - 200}, ${height - 80})`);
-
-  // Males legend
-  legend
-    .append("rect")
-    .attr("x", 0)
-    .attr("y", 0)
-    .attr("width", 15)
-    .attr("height", 15)
-    .attr("fill", "#2171b5");
-
-  legend
-    .append("text")
-    .attr("x", 25)
-    .attr("y", 12)
-    .text("Males")
-    .style("font-size", "12px");
-
-  // Females legend
-  legend
-    .append("rect")
-    .attr("x", 0)
-    .attr("y", 25)
-    .attr("width", 15)
-    .attr("height", 15)
-    .attr("fill", "#f768a1");
-
-  legend
-    .append("text")
-    .attr("x", 25)
-    .attr("y", 37)
-    .text("Females")
-    .style("font-size", "12px");
 }
 
 // Render Age Group view: European countries -> Age Groups -> Destination countries
